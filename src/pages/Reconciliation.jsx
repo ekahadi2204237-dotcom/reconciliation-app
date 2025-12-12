@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, ShoppingBag, Music2, Loader2, Zap, X } from 'lucide-react';
+import { ArrowLeft, ShoppingBag, Music2, Loader2, Zap, Package } from 'lucide-react';
 import FileUploader from '@/components/Reconciliation/FileUploader';
 import SummaryCards from '@/components/Reconciliation/SummaryCards';
 import ReconciliationTable from '@/components/Reconciliation/ReconciliationTable';
 import FinancialSummary from '@/components/Reconciliation/FinancialSummary';
 import ModeToggle from '@/components/Reconciliation/ModeToggle';
 import { cn } from "@/lib/utils";
-import * as XLSX from 'xlsx';
+import { loadAccurate, loadShopee, loadTikTok, loadLazada } from "@/lib/parsers";
+import { reconcileData } from "@/lib/reconciliation";
 
 export default function Reconciliation() {
   const { platform } = useParams();
@@ -16,165 +17,48 @@ export default function Reconciliation() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [mode, setMode] = useState(platform);
   const [uploadedFiles, setUploadedFiles] = useState({ platform: null, accurate: null });
+  const [error, setError] = useState(null);
 
-  const isShopee = mode === 'shopee';
-  const platformLabel = isShopee ? 'Shopee' : 'TikTok';
-
-  const parseExcelFile = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-
-      reader.onload = (e) => {
-        try {
-          const data = new Uint8Array(e.target.result);
-          const workbook = XLSX.read(data, { type: 'array' });
-          const sheetName = workbook.SheetNames[0];
-          const worksheet = workbook.Sheets[sheetName];
-          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-          resolve({ data: jsonData, sheetCount: workbook.SheetNames.length });
-        } catch (error) {
-          reject(error);
-        }
-      };
-
-      reader.onerror = (error) => reject(error);
-      reader.readAsArrayBuffer(file);
-    });
+  const platformConfig = {
+    shopee: { label: 'Shopee', icon: ShoppingBag, loader: loadShopee },
+    tiktok: { label: 'TikTok', icon: Music2, loader: loadTikTok },
+    lazada: { label: 'Lazada', icon: Package, loader: loadLazada }
   };
 
-  const normalizeInvoiceNumber = (invoice) => {
-    if (!invoice) return '';
-    return String(invoice).trim().toUpperCase();
-  };
+  const currentConfig = platformConfig[mode];
+  const PlatformIcon = currentConfig.icon;
 
-  const parseAmount = (value) => {
-    if (value === null || value === undefined || value === '') return 0;
-    if (typeof value === 'number') return value;
-
-    const str = String(value).replace(/[^\d.-]/g, '');
-    const num = parseFloat(str);
-    return isNaN(num) ? 0 : num;
-  };
-
-  const findColumnIndex = (headers, possibleNames) => {
-    return headers.findIndex(header => {
-      const normalizedHeader = String(header).toLowerCase().trim();
-      return possibleNames.some(name => normalizedHeader.includes(name.toLowerCase()));
-    });
-  };
-
-  const processFiles = async (platformFile, accurateFile) => {
+  const processFiles = async (marketplaceFile, accurateFile) => {
     setIsProcessing(true);
+    setError(null);
 
     try {
-      const platformResult = await parseExcelFile(platformFile);
-      const accurateResult = await parseExcelFile(accurateFile);
+      console.log(`\n${'='.repeat(60)}`);
+      console.log(`Starting reconciliation for ${currentConfig.label}`);
+      console.log(`${'='.repeat(60)}\n`);
 
-      const platformData = platformResult.data;
-      const accurateData = accurateResult.data;
-
-      if (platformData.length < 2 || accurateData.length < 2) {
-        alert('Files must contain headers and at least one data row');
-        setIsProcessing(false);
-        return;
-      }
+      const marketplaceResult = await currentConfig.loader(marketplaceFile);
+      const accurateResult = await loadAccurate(accurateFile);
 
       setUploadedFiles({
-        platform: { name: platformFile.name, sheets: platformResult.sheetCount, rows: platformData.length - 1 },
-        accurate: { name: accurateFile.name, sheets: accurateResult.sheetCount, rows: accurateData.length - 1 }
+        platform: marketplaceResult.metadata,
+        accurate: accurateResult.metadata
       });
 
-      const platformHeaders = platformData[0];
-      const accurateHeaders = accurateData[0];
+      const results = reconcileData(
+        marketplaceResult.records,
+        accurateResult.records,
+        currentConfig.label
+      );
 
-      const platformInvoiceCol = findColumnIndex(platformHeaders, ['invoice', 'order', 'no']);
-      const platformAmountCol = findColumnIndex(platformHeaders, ['amount', 'total', 'price', 'value']);
-
-      const accurateInvoiceCol = findColumnIndex(accurateHeaders, ['invoice', 'order', 'no']);
-      const accurateAmountCol = findColumnIndex(accurateHeaders, ['amount', 'total', 'price', 'value']);
-
-      if (platformInvoiceCol === -1 || platformAmountCol === -1) {
-        alert(`Could not find required columns in ${platformLabel} file.`);
-        setIsProcessing(false);
-        return;
+      if (results.length === 0) {
+        setError('No reconciliation data generated. Please check your files.');
+      } else {
+        setReconciliationData(results);
       }
-
-      if (accurateInvoiceCol === -1 || accurateAmountCol === -1) {
-        alert('Could not find required columns in Accurate file.');
-        setIsProcessing(false);
-        return;
-      }
-
-      const platformMap = new Map();
-      for (let i = 1; i < platformData.length; i++) {
-        const row = platformData[i];
-        const invoice = normalizeInvoiceNumber(row[platformInvoiceCol]);
-        const amount = parseAmount(row[platformAmountCol]);
-
-        if (invoice) {
-          platformMap.set(invoice, amount);
-        }
-      }
-
-      const accurateMap = new Map();
-      for (let i = 1; i < accurateData.length; i++) {
-        const row = accurateData[i];
-        const invoice = normalizeInvoiceNumber(row[accurateInvoiceCol]);
-        const amount = parseAmount(row[accurateAmountCol]);
-
-        if (invoice) {
-          accurateMap.set(invoice, amount);
-        }
-      }
-
-      const results = [];
-      const processedInvoices = new Set();
-
-      platformMap.forEach((platformAmount, invoice) => {
-        processedInvoices.add(invoice);
-        const accurateAmount = accurateMap.get(invoice);
-
-        if (accurateAmount !== undefined) {
-          const difference = platformAmount - accurateAmount;
-          results.push({
-            invoiceNumber: invoice,
-            platformAmount,
-            accurateAmount,
-            difference,
-            status: Math.abs(difference) < 0.01 ? 'Match' : 'Amount Difference'
-          });
-        } else {
-          results.push({
-            invoiceNumber: invoice,
-            platformAmount,
-            accurateAmount: '-',
-            difference: '-',
-            status: `${platformLabel} Only`
-          });
-        }
-      });
-
-      accurateMap.forEach((accurateAmount, invoice) => {
-        if (!processedInvoices.has(invoice)) {
-          results.push({
-            invoiceNumber: invoice,
-            platformAmount: '-',
-            accurateAmount,
-            difference: '-',
-            status: 'Accurate Only'
-          });
-        }
-      });
-
-      results.sort((a, b) => {
-        const statusOrder = { 'Amount Difference': 0, [`${platformLabel} Only`]: 1, 'Accurate Only': 2, 'Match': 3 };
-        return statusOrder[a.status] - statusOrder[b.status];
-      });
-
-      setReconciliationData(results);
-    } catch (error) {
-      console.error('Error processing files:', error);
-      alert('Error processing files. Please ensure they are valid Excel or CSV files.');
+    } catch (err) {
+      console.error('Reconciliation error:', err);
+      setError(err.message || 'Error processing files. Please ensure files are in correct format.');
     } finally {
       setIsProcessing(false);
     }
@@ -183,6 +67,7 @@ export default function Reconciliation() {
   const resetReconciliation = () => {
     setReconciliationData([]);
     setUploadedFiles({ platform: null, accurate: null });
+    setError(null);
   };
 
   return (
@@ -213,20 +98,20 @@ export default function Reconciliation() {
               {/* Reconciliation Mode */}
               <div className="bg-white rounded-2xl border border-gray-200 p-6">
                 <h3 className="text-sm font-semibold text-gray-900 mb-4">Reconciliation Mode</h3>
-                <div className="flex gap-3">
+                <div className="flex gap-3 flex-col">
                   <button
                     onClick={() => {
                       setMode('shopee');
                       resetReconciliation();
                     }}
                     className={cn(
-                      "flex-1 px-4 py-3 rounded-xl font-medium transition-all duration-200",
+                      "px-4 py-3 rounded-xl font-medium transition-all duration-200 flex items-center justify-center gap-2",
                       mode === 'shopee'
                         ? "bg-orange-100 text-orange-700 border border-orange-200"
                         : "bg-gray-50 text-gray-600 border border-gray-200 hover:border-gray-300"
                     )}
                   >
-                    <ShoppingBag className="w-4 h-4 mx-auto mb-1" />
+                    <ShoppingBag className="w-4 h-4" />
                     Shopee
                   </button>
                   <button
@@ -235,14 +120,29 @@ export default function Reconciliation() {
                       resetReconciliation();
                     }}
                     className={cn(
-                      "flex-1 px-4 py-3 rounded-xl font-medium transition-all duration-200",
+                      "px-4 py-3 rounded-xl font-medium transition-all duration-200 flex items-center justify-center gap-2",
                       mode === 'tiktok'
                         ? "bg-cyan-100 text-cyan-700 border border-cyan-200"
                         : "bg-gray-50 text-gray-600 border border-gray-200 hover:border-gray-300"
                     )}
                   >
-                    <Music2 className="w-4 h-4 mx-auto mb-1" />
+                    <Music2 className="w-4 h-4" />
                     TikTok
+                  </button>
+                  <button
+                    onClick={() => {
+                      setMode('lazada');
+                      resetReconciliation();
+                    }}
+                    className={cn(
+                      "px-4 py-3 rounded-xl font-medium transition-all duration-200 flex items-center justify-center gap-2",
+                      mode === 'lazada'
+                        ? "bg-blue-100 text-blue-700 border border-blue-200"
+                        : "bg-gray-50 text-gray-600 border border-gray-200 hover:border-gray-300"
+                    )}
+                  >
+                    <Package className="w-4 h-4" />
+                    Lazada
                   </button>
                 </div>
               </div>
@@ -265,12 +165,18 @@ export default function Reconciliation() {
                 />
               </div>
 
-              {/* Process Button */}
-              {reconciliationData.length === 0 && !isProcessing && (
+              {/* Status Messages */}
+              {reconciliationData.length === 0 && !isProcessing && !error && (
                 <div className="text-center py-4 text-sm text-gray-500">
                   {uploadedFiles.platform && uploadedFiles.accurate
                     ? "Files ready to process"
                     : "Upload both files to begin"}
+                </div>
+              )}
+
+              {error && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                  <p className="text-sm text-red-700 font-medium">Error: {error}</p>
                 </div>
               )}
 
@@ -295,14 +201,14 @@ export default function Reconciliation() {
               </div>
             )}
 
-            {!isProcessing && reconciliationData.length === 0 && (
+            {!isProcessing && reconciliationData.length === 0 && !error && (
               <div className="bg-white rounded-2xl border border-gray-200 p-12 flex flex-col items-center gap-4">
                 <div className="w-16 h-16 rounded-2xl bg-orange-100 flex items-center justify-center">
                   <Zap className="w-8 h-8 text-orange-500" />
                 </div>
                 <h2 className="text-2xl font-bold text-gray-900">Ready to Reconcile</h2>
                 <p className="text-center text-gray-600 max-w-md">
-                  Upload both files and click "Process Reconciliation" to start
+                  Upload both {currentConfig.label} and Accurate files to start
                 </p>
               </div>
             )}

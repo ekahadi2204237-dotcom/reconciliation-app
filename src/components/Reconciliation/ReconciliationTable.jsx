@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Download, Filter, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle, ShoppingBag, Database, Music2, FileSpreadsheet, FileText } from 'lucide-react';
+import { Search, Download, Filter, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle, ShoppingBag, Database, Music2, FileSpreadsheet, FileText, Package } from 'lucide-react';
 import { cn } from "@/lib/utils";
 
 export default function ReconciliationTable({ data, mode = 'shopee' }) {
@@ -13,8 +13,14 @@ export default function ReconciliationTable({ data, mode = 'shopee' }) {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
 
-  const isShopee = mode === 'shopee';
-  const platformLabel = isShopee ? 'Shopee' : 'TikTok';
+  const platformConfig = {
+    shopee: { label: 'Shopee', icon: ShoppingBag, color: 'bg-orange-50 text-orange-700 border-orange-200', dotColor: 'bg-orange-500' },
+    tiktok: { label: 'TikTok', icon: Music2, color: 'bg-cyan-50 text-cyan-700 border-cyan-200', dotColor: 'bg-cyan-500' },
+    lazada: { label: 'Lazada', icon: Package, color: 'bg-blue-50 text-blue-700 border-blue-200', dotColor: 'bg-blue-500' }
+  };
+
+  const config = platformConfig[mode] || platformConfig.shopee;
+  const platformLabel = config.label;
 
   const STATUS_CONFIG = {
     'Match': {
@@ -28,9 +34,9 @@ export default function ReconciliationTable({ data, mode = 'shopee' }) {
       icon: AlertTriangle
     },
     [`${platformLabel} Only`]: {
-      color: isShopee ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-cyan-50 text-cyan-700 border-cyan-200',
-      dotColor: isShopee ? 'bg-orange-500' : 'bg-cyan-500',
-      icon: isShopee ? ShoppingBag : Music2
+      color: config.color,
+      dotColor: config.dotColor,
+      icon: config.icon
     },
     'Accurate Only': {
       color: 'bg-purple-50 text-purple-700 border-purple-200',
@@ -43,7 +49,7 @@ export default function ReconciliationTable({ data, mode = 'shopee' }) {
     return data.filter(item => {
       const matchesSearch =
         item.invoiceNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.platformAmount?.toString().includes(searchTerm) ||
+        item.marketplaceAmount?.toString().includes(searchTerm) ||
         item.accurateAmount?.toString().includes(searchTerm);
       const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
       return matchesSearch && matchesStatus;
@@ -69,7 +75,7 @@ export default function ReconciliationTable({ data, mode = 'shopee' }) {
 
     const exportData = filteredData.map(item => ({
       'Invoice Number': item.invoiceNumber,
-      [`${platformLabel} Amount`]: item.platformAmount !== '-' ? item.platformAmount : '',
+      [`${platformLabel} Amount`]: item.marketplaceAmount !== '-' ? item.marketplaceAmount : '',
       'Accurate Amount': item.accurateAmount !== '-' ? item.accurateAmount : '',
       'Difference': item.difference !== '-' ? item.difference : '',
       'Status': item.status
@@ -182,7 +188,7 @@ export default function ReconciliationTable({ data, mode = 'shopee' }) {
                     className="border-b border-gray-200 hover:bg-gray-50 transition-colors"
                   >
                     <TableCell className="font-medium text-gray-900 py-4 px-6">{item.invoiceNumber}</TableCell>
-                    <TableCell className="text-right text-gray-600 py-4 px-6 font-mono">{formatCurrency(item.platformAmount)}</TableCell>
+                    <TableCell className="text-right text-gray-600 py-4 px-6 font-mono">{formatCurrency(item.marketplaceAmount)}</TableCell>
                     <TableCell className="text-right text-gray-600 py-4 px-6 font-mono">{formatCurrency(item.accurateAmount)}</TableCell>
                     <TableCell className={cn(
                       "text-right font-medium py-4 px-6 font-mono",

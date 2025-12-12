@@ -10,8 +10,13 @@ export default function FileUploader({ onFilesUploaded, mode = 'shopee', uploade
   const platformInputRef = useRef(null);
   const accurateInputRef = useRef(null);
 
-  const isShopee = mode === 'shopee';
-  const platformLabel = isShopee ? 'Shopee' : 'TikTok';
+  const platformConfig = {
+    shopee: 'Shopee',
+    tiktok: 'TikTok',
+    lazada: 'Lazada'
+  };
+
+  const platformLabel = platformConfig[mode] || 'Marketplace';
 
   const validateFile = (file) => {
     const validTypes = [

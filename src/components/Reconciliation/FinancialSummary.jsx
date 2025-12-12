@@ -3,11 +3,17 @@ import { TrendingDown } from 'lucide-react';
 import { cn } from "@/lib/utils";
 
 export default function FinancialSummary({ data, mode = 'shopee' }) {
-  const isShopee = mode === 'shopee';
-  const platformLabel = isShopee ? 'Shopee' : 'TikTok';
+  const platformConfig = {
+    shopee: { label: 'Shopee' },
+    tiktok: { label: 'TikTok' },
+    lazada: { label: 'Lazada' }
+  };
+
+  const config = platformConfig[mode] || platformConfig.shopee;
+  const platformLabel = config.label;
 
   const totalPlatform = data.reduce((sum, item) => {
-    return sum + (typeof item.platformAmount === 'number' ? item.platformAmount : 0);
+    return sum + (typeof item.marketplaceAmount === 'number' ? item.marketplaceAmount : 0);
   }, 0);
 
   const totalAccurate = data.reduce((sum, item) => {

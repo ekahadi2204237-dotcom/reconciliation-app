@@ -1,11 +1,16 @@
 import React from 'react';
-import { CheckCircle2, AlertTriangle, ShoppingBag, Database, Music2, FileSpreadsheet } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, ShoppingBag, Database, Music2, FileSpreadsheet, Package } from 'lucide-react';
 import { cn } from "@/lib/utils";
 
 export default function SummaryCards({ data, mode = 'shopee' }) {
-  const isShopee = mode === 'shopee';
-  const platformLabel = isShopee ? 'Shopee' : 'TikTok';
-  const PlatformIcon = isShopee ? ShoppingBag : Music2;
+  const platformConfig = {
+    shopee: { label: 'Shopee', icon: ShoppingBag, color: 'text-orange-600', bg: 'bg-orange-50' },
+    tiktok: { label: 'TikTok', icon: Music2, color: 'text-cyan-600', bg: 'bg-cyan-50' },
+    lazada: { label: 'Lazada', icon: Package, color: 'text-blue-600', bg: 'bg-blue-50' }
+  };
+
+  const config = platformConfig[mode] || platformConfig.shopee;
+  const { label: platformLabel, icon: PlatformIcon } = config;
 
   const stats = {
     total: data.length,
@@ -48,8 +53,8 @@ export default function SummaryCards({ data, mode = 'shopee' }) {
       title: `${platformLabel} Only`,
       value: stats.platformOnly.toLocaleString(),
       icon: PlatformIcon,
-      color: isShopee ? 'text-orange-600' : 'text-cyan-600',
-      bg: isShopee ? 'bg-orange-50' : 'bg-cyan-50'
+      color: config.color,
+      bg: config.bg
     },
     {
       title: 'Accurate Only',
